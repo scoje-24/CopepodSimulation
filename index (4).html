@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copepod Population Simulator</title>
+<style>
+:root{--bg:#f2f6f7;--card:#fff;--ink:#0f2530;--mut:#51636e;--line:#d3dee3;--s0:#8fd3df;--s1:#1b8aa0;--s2:#2b2f7a;--ac:#0e6f7e;--warn:#b4531f}
+@media(prefers-color-scheme:dark){:root{--bg:#0b161c;--card:#122229;--ink:#e4eef2;--mut:#8fa4af;--line:#25404b;--s0:#7cc9d6;--s1:#2fa3bb;--s2:#8f94f0;--ac:#58c4d4;--warn:#f0985f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+header,main,footer{max-width:1120px;margin:0 auto;padding:0 20px}
+h1{font:600 2.1rem/1.15 Georgia,"Times New Roman",serif;margin:36px 0 8px}h2{font:600 1.35rem Georgia,serif;margin:36px 0 10px}
+p.lead{max-width:68ch;color:var(--mut);margin:0 0 22px}
+.grid{display:grid;grid-template-columns:320px 1fr;gap:20px;align-items:start}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px}
+.ctl{margin-bottom:12px}.ctl label{display:flex;justify-content:space-between;font-size:.9rem}.ctl output{font-variant-numeric:tabular-nums;color:var(--ac);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--ac)}select{width:100%;padding:6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.chk{display:flex;gap:8px;font-size:.88rem;margin:8px 0;align-items:flex-start}
+canvas{width:100%;display:block}#c1{height:380px}#c2{height:170px}
+.leg{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.85rem;margin:8px 0 0;color:var(--mut)}.leg i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.met{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:14px}.met div{border-left:3px solid var(--line);padding-left:10px;font-size:.82rem;color:var(--mut)}.met b{display:block;font-size:1.25rem;color:var(--ink);font-weight:600}
+#st{font-weight:600;margin:10px 0 0}.ok{color:var(--ac)}.bad{color:var(--warn)}
+details{margin:8px 0}summary{cursor:pointer;font-weight:600}
+small,.note{color:var(--mut);font-size:.85rem}
+ol.refs{padding-left:22px;font-size:.9rem}ol.refs li{margin-bottom:8px}ol.refs em{color:var(--mut)}
+footer{padding-bottom:50px}
+</style></head><body>
+<header><h1>What makes a copepod population grow or shrink?</h1>
+<p class="lead">Copepods are tiny, shrimp-like animals, each about the size of a grain of rice, that drift through the ocean. They eat microscopic algae and are eaten by fish, so they are a key link in the ocean food web. Change the water and food below and watch how a model copepod population responds over the years.</p>
+<div class="card" style="max-width:68ch;margin-bottom:20px"><b>How to use this page</b><ol style="margin:6px 0 0;padding-left:20px"><li>Move a slider (temperature, food, pH or salinity).</li><li>Watch the colored graph redraw. A taller graph means more copepods.</li><li>Read the green or orange message under the graph to see whether the population survives.</li></ol></div></header>
+<main>
+<div class="grid">
+<section class="card" aria-label="Controls">
+<div class="ctl"><label for="sp">Copepod type</label><select id="sp"><option value="0.01">Smaller, faster-growing (like Calanus finmarchicus)</option><option value="0.007" selected>Medium size (like Calanus glacialis)</option><option value="0.005">Largest, slowest, longest-lived (like Calanus hyperboreus)</option></select></div>
+<div id="sl"></div>
+<label class="chk"><input type="checkbox" id="auto" checked><span>Let the copepods pick the best time of year to start laying eggs</span></label>
+<div class="ctl" id="tg" hidden><label for="tegg">Egg laying starts<output id="o_tegg"></output></label><input type="range" id="tegg" min="0" max="1095" step="15" value="120"></div>
+<label class="chk"><input type="checkbox" id="dd" checked><span>Crowding limit: growth slows near 3000 animals per m² (my own simplifying assumption)</span></label>
+</section>
+<section class="card" aria-label="Population figure">
+<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><b>Copepod population over time</b><label class="chk" style="margin:0"><input type="checkbox" id="log"><span>Log scale</span></label></div>
+<canvas id="c1" role="img" aria-label="Copepod population by life stage over time"></canvas>
+<div class="leg"><span><i style="background:var(--s0)"></i>Eggs and larvae (nauplii)</span><span><i style="background:var(--s1)"></i>Juveniles (C1–C5)</span><span><i style="background:var(--s2)"></i>Adults</span></div>
+<p id="st"></p>
+<div class="met" id="met"></div>
+<p class="note" style="margin-bottom:0">How to read this: each color is a life stage, stacked on top of the others, so the total height is the whole population. Numbers are relative, not real counts: every run starts with 1000 eggs per m², because the model is built to show whether a population survives and when it peaks, not to predict exact numbers. Use the log-scale box to see tiny populations.</p>
+</section></div>
+<h2>The ocean you have created</h2><p class="lead" style="margin-bottom:10px">Each year, algae “bloom” in spring (blue) and the water warms and cools (orange). Copepods have to time their lives around this cycle.</p>
+<div class="card"><canvas id="c2" role="img" aria-label="Annual food and temperature cycle"></canvas>
+<div class="leg"><span><i style="background:var(--s0)"></i>Food (algae)</span><span><i style="background:var(--warn)"></i>Surface temperature</span></div></div>
+<h2>How the model works</h2>
+<details open><summary>The life of a copepod</summary>
+<p>A copepod starts as an egg. The egg hatches into a larva called a nauplius, which grows through five juvenile stages (called C1 to C5) and finally becomes an adult. Adult females lay eggs, and the cycle repeats. At every step, some copepods are eaten by predators or starve.</p>
+<p>The model follows groups of eggs laid on different days of the year and tracks how big they get, how much energy they store, and how many survive. It then adds up all the groups to draw the population graph. A population survives when, on average, each mother leaves behind more than one surviving daughter that grows up to lay eggs of her own.</p>
+<p>Two tricks help <i>Calanus</i> copepods survive harsh seasons. They store fat (lipids) while algae are plentiful, and in the food-poor season, juveniles can go into a dormant resting state called diapause. They sink to deep, cold water, stop eating and slow their metabolism to a quarter of normal, living on the stored fat. The model includes both.</p></details>
+<details open><summary>Evidence behind each slider</summary>
+<p><b>Temperature.</b> Cold-blooded animals speed up when it is warm. In the model, development speeds up about 3 times for every 10 °C of warming and growth about 2.5 times (Forster et al. 2011; Campbell et al. 2001). A warmer copepod also burns energy faster, so it needs more food. Warm water has another effect on eggs: in lab tests, <i>Calanus finmarchicus</i> eggs hatched fine up to 19 °C, fewer than 15% hatched at 21 °C, and none hatched at 24 °C or above (Preziosi 2012). The model applies this, so you will only see it at the top of the temperature slider. Experiments in Greenland also showed that egg production of <i>C. finmarchicus</i> more than tripled between 2.5 and 5 °C, while <i>C. glacialis</i> was already laying eggs at 0 to 2.5 °C (Kjellerup et al. 2012).</p>
+<p><b>Food.</b> Food is the fuel. In the model, eating, growing and egg laying rise with the amount of algae and level off when the copepod is full (the Michaelis–Menten curve, with half-full at 1 mg chlorophyll per m³). The timing of the bloom matters as much as its size: if eggs hatch long before or after the bloom, the babies starve (Varpe et al. 2007; Banas et al. 2016).</p>
+<p><b>pH (acidity).</b> The ocean is slowly becoming more acidic as it absorbs carbon dioxide (CO₂), so scientists have tested copepods at low pH. The results are reassuring for <i>Calanus</i>. Eggs, larvae and egg laying were not harmed at levels forecast for the year 2300 (Bailey et al. 2017), and egg production was unchanged down to pH 6.9, although hatching was delayed (Weydmann et al. 2012). In cold water, eggs hatched normally down to about pH 6.6. In warm water (15 °C), hatching dropped at about pH 7.0 and below (Preziosi et al. 2017). The model therefore only lowers hatching, and only at low pH, with a bigger effect in warmer water. Other copepods can be more sensitive. For the small copepod <i>Acartia tonsa</i>, hatching fell by more than 20% at forecast 2100 CO₂ levels when both parents had been exposed (Cripps et al. 2014).</p>
+<p><b>Salinity (saltiness).</b> <i>Calanus</i> copepods are surprisingly tough. In a Greenland study, feeding rates did not change between salinities of 25 and 40, but about half of the animals died at salinities near 9 (<i>C. glacialis</i>) or 14 (<i>C. finmarchicus</i>) (Makri et al. 2024). Melting ice and river runoff can drop the salinity of Arctic surface water that low. The model adds harm starting below a salinity of 25, reaching its maximum at 10.</p>
+<p><b>Predators.</b> Each day a fixed share of copepods is eaten. Bigger copepods and warmer water make this share larger, following global measurements by Hirst and Kiørboe (2002).</p></details>
+<details><summary>How far should you trust this? (limits of the model)</summary>
+<p>This is a simplified model, built on real experiments, but it is a tool for exploring ideas, not a forecast.</p>
+<p>The temperature, food, growth, and predation parts come directly from a published model (Banas et al. 2016), which was tested against real populations. The pH and salinity responses are mine. The <b>direction</b> and <b>thresholds</b> come from the experiments above, but the <b>exact size</b> of the harm at extreme values is an assumption. At the lowest salinities the model doubles the death rate, cuts egg laying by 60% and cuts hatching by 70%; at the lowest pH it cuts hatching by up to 60%. Because small changes in survival add up over a copepod’s multi-year life, even these moderate changes make the population collapse below a salinity of about 20. These are plausible, not measured, values. Most tests lasted days to weeks, not whole life cycles.</p>
+<p>The model describes cold-water, ocean-living <i>Calanus</i> copepods. Tropical copepods, or estuary species that live in brackish water (such as <i>Acartia tonsa</i> or <i>Eurytemora affinis</i>, which hatch best at low salinities; Kuismanen et al. 2020), would respond very differently. The food bloom is a smooth idealized curve, the temperature cycle is fixed at ±2.5 °C around your average, and food quality, disease, ocean currents and multiple generations of acid exposure are not included. The crowding limit of 3000 animals per m² is my own addition to stop the graph growing forever.</p></details>
+<details><summary>For the curious: technical details</summary>
+<p>Each cohort of eggs spawned on one date is tracked with four state variables: developmental stage <i>D</i> (0 = egg, 1 = adult), structural mass <i>S</i>, energy reserves <i>R</i> and survivorship <i>N</i>. Development and ingestion follow a Michaelis–Menten response to food (half-saturation 1 mg chl m⁻³) and power-law (Q₁₀) responses to temperature (Q₁₀ = 3.0 for development, 2.5 for growth). Ingestion, metabolism and predation scale with body mass to the power 0.7. After stage C3 a copepod enters diapause when food falls below a threshold: it stops feeding and developing, metabolism drops to one quarter, and it sits at deep-water temperature (0.4 × mean surface temperature). Cohorts starve if reserves fall below −10% of structure. Adults produce eggs from income (current feeding) and capital (stored lipid) once the egg-production start date has passed. Cohorts from every spawning date (5-day steps) are run for up to 3 years, assembled into a transition matrix, and projected forward day by day. The u₀ trait (development rate at 0 °C) sets adult size and life-cycle length.</p>
+<p>pH harm x = clamp((7.2 − pH)/0.6) × (0.4 + 0.6·clamp((T − 3)/12)); hatching × (1 − 0.6x), mortality × (1 + 0.1x). Salinity harm y = clamp((25 − S)/15)²; mortality × (1 + y), ingestion × (1 − 0.3y), egg production × (1 − 0.6y), hatching × (1 − 0.7y). Thermal hatching factor: 1 up to 19 °C, 0.15 at 21 °C, 0 at 24 °C and above (linear between).</p></details>
+</main>
+<footer>
+<h2>References</h2>
+<p class="note">Sources for the data and equations used in this model. “Model structure” sources supply the basic life-cycle model. “Evidence” sources shaped the pH, salinity and temperature effects.</p>
+<ol class="refs">
+<li>Banas, N. S., Møller, E. F., Nielsen, T. G., &amp; Eisner, L. B. (2016). Copepod life strategy and population viability in response to prey timing and temperature: testing a new model across latitude, time, and the size spectrum. <em>Frontiers in Marine Science</em> 3:225. doi:10.3389/fmars.2016.00225 <em>(model structure, equations and most parameters)</em></li>
+<li>Banas, N. S., &amp; Campbell, R. G. (2016). Traits controlling body size in copepods: separating general constraints from species-specific strategies. <em>Marine Ecology Progress Series</em> 558:21–33. doi:10.3354/meps11873 <em>(development rate u₀ and adult size)</em></li>
+<li>Campbell, R. G., Wagner, M. M., Teegarden, G. J., Boudreau, C. A., &amp; Durbin, E. G. (2001). Growth and development rates of the copepod <i>Calanus finmarchicus</i> reared in the laboratory. <em>Marine Ecology Progress Series</em> 221:161–183. doi:10.3354/meps221161 <em>(stage durations)</em></li>
+<li>Forster, J., Hirst, A. G., &amp; Woodward, G. (2011). Growth and development rates have different thermal responses. <em>American Naturalist</em> 178:668–678. doi:10.1086/662174 <em>(Q₁₀ values)</em></li>
+<li>Saiz, E., &amp; Calbet, A. (2007). Scaling of feeding in marine calanoid copepods. <em>Limnology and Oceanography</em> 52:668–675. doi:10.4319/lo.2007.52.2.0668 <em>(ingestion scaling)</em></li>
+<li>Hirst, A. G., &amp; Kiørboe, T. (2002). Mortality of marine planktonic copepods: global rates and patterns. <em>Marine Ecology Progress Series</em> 230:195–209. doi:10.3354/meps230195 <em>(size- and temperature-dependent mortality)</em></li>
+<li>Kiørboe, T., &amp; Sabatini, M. (1995). Scaling of fecundity, growth and development in marine planktonic copepods. <em>Marine Ecology Progress Series</em> 120:285–298. doi:10.3354/meps120285 <em>(egg-to-adult size relationship)</em></li>
+<li>Maps, F., Record, N. R., &amp; Pershing, A. J. (2014). A metabolic approach to dormancy in pelagic copepods helps explaining inter- and intra-specific variability in life-history strategies. <em>Journal of Plankton Research</em> 36:18–30. doi:10.1093/plankt/fbt100 <em>(diapause metabolism)</em></li>
+<li>Varpe, Ø., Jørgensen, C., Tarling, G. A., &amp; Fiksen, Ø. (2007). Early is better: seasonal egg fitness and timing of reproduction in a zooplankton life-history model. <em>Oikos</em> 116:1331–1342. doi:10.1111/j.0030-1299.2007.15893.x <em>(egg timing optimisation)</em></li>
+<li>Varpe, Ø., Jørgensen, C., Tarling, G. A., &amp; Fiksen, Ø. (2009). The adaptive value of energy storage and capital breeding in seasonal environments. <em>Oikos</em> 118:363–370. doi:10.1111/j.1600-0706.2008.17036.x <em>(capital breeding)</em></li>
+<li>Madsen, S. D., Hansen, B. W., &amp; Nielsen, T. G. (2001). Annual population development and production by <i>Calanus finmarchicus</i>, <i>C. glacialis</i> and <i>C. hyperboreus</i> in Disko Bay, western Greenland. <em>Marine Biology</em> 139:75–83. doi:10.1007/s002270100552 <em>(life cycles used to check species analogs)</em></li>
+<li>Swalethorp, R., et al. (2011). Grazing, egg production, and biochemical evidence of differences in the life strategies of <i>Calanus finmarchicus</i>, <i>C. glacialis</i> and <i>C. hyperboreus</i> in Disko Bay, western Greenland. <em>Marine Ecology Progress Series</em> 429:125–144. doi:10.3354/meps09065</li>
+<li>Falk-Petersen, S., Mayzaud, P., Kattner, G., &amp; Sargent, J. R. (2009). Lipids and life strategy of Arctic <i>Calanus</i>. <em>Marine Biology Research</em> 5:18–39. doi:10.1080/17451000802512267</li>
+<li>Preziosi, B. M., Runge, J. A., Christensen, J. P., &amp; Jones, R. J. (2017). Effects of pH and temperature on egg hatching success of the marine planktonic copepod, <i>Calanus finmarchicus</i>. <em>Marine Biology</em> 164:211. doi:10.1007/s00227-017-3243-5 <em>(pH and temperature effects on hatching)</em></li>
+<li>Preziosi, B. M. (2012). <em>The effects of ocean acidification and climate change on the reproductive processes of the marine copepod Calanus finmarchicus</em>. Master’s thesis, University of Maine. digitalcommons.library.umaine.edu/etd/1862 <em>(hatching success above 19 °C)</em></li>
+<li>Weydmann, A., Søreide, J. E., Kwasniewski, S., &amp; Widdicombe, S. (2012). Influence of CO₂-induced acidification on the reproduction of a key Arctic copepod <i>Calanus glacialis</i>. <em>Journal of Experimental Marine Biology and Ecology</em> 428:39–42. doi:10.1016/j.jembe.2012.06.002 <em>(egg production and hatching at pH 8.2, 7.6 and 6.9)</em></li>
+<li>Bailey, A., Thor, P., Browman, H. I., et al. (2017). Early life stages of the Arctic copepod <i>Calanus glacialis</i> are unaffected by increased seawater pCO₂. <em>ICES Journal of Marine Science</em> 74:996–1004. <em>(development and survival up to 1700 µatm CO₂)</em></li>
+<li>Cripps, G., Lindeque, P., &amp; Flynn, K. J. (2014). Parental exposure to elevated pCO₂ influences the reproductive success of copepods. <em>Journal of Plankton Research</em> 36:1165–1174. doi:10.1093/plankt/fbu052 <em>(a more pH-sensitive species, <i>Acartia tonsa</i>)</em></li>
+<li>Makri, M., Hansen, P. J., &amp; Nielsen, T. G. (2024). Impact of salinity and temperature on the vital rates of co-occurring <i>Calanus glacialis</i> and <i>C. finmarchicus</i> from West Greenland. <em>Marine Ecology Progress Series</em> 729:47–62. doi:10.3354/meps14505 <em>(salinity tolerance and mortality)</em></li>
+<li>Kjellerup, S., Dünweber, M., Swalethorp, R., Nielsen, T. G., Møller, E. F., Markager, S., &amp; Hansen, B. W. (2012). Effects of a future warmer ocean on the coexisting copepods <i>Calanus finmarchicus</i> and <i>C. glacialis</i> in Disko Bay, western Greenland. <em>Marine Ecology Progress Series</em> 447:87–108. <em>(temperature, food and egg production)</em></li>
+<li>Kuismanen, L., Forsblom, L., Engström-Öst, J., Båmstedt, U., &amp; Glippa, O. (2020). Salinity effects on egg production, hatching, and survival of <i>Eurytemora affinis</i> (Copepoda, Calanoida). <em>Crustaceana</em> 93:3–5. doi:10.1163/15685403-00003988 <em>(contrast: a brackish-water species)</em></li>
+</ol>
+<p class="note">Links and DOIs were checked against publisher or repository pages. The page numbers of Bailey et al. (2017), Kuismanen et al. (2020) and the Preziosi article number come from memory or secondary listings, so please check them before citing in a formal paper.</p>
+</footer>
+<script>
+/*MODEL*/
+const C={I0:.4,Qg:2.5,Qd:3,ra:.67,rb:.25,rm:.14,rs:.1,th:.7,Df:.1,Ds:.35,Dd:.49,rmax:1.5,rea:.013,thea:.62,Ks:1,K:3000};
+const NB=73,MA=1095,L=MA+1,DT=.5,cl=(x,a,b)=>Math.min(b,Math.max(a,x));
+const N=new Float32Array(NB*L),EN=new Float32Array(NB*L),ST=new Uint8Array(NB*L);
+const V=new Float64Array(NB*NB),AG=new Float64Array(NB),EG=new Float64Array(NB);
+/* Evidence-based stress functions (see "Evidence behind each slider").
+ pH: hatching harmed only at low pH, more so in warm water (Preziosi 2017; Weydmann 2012; Bailey 2017).
+ Salinity: no effect 25-40; severe mortality below ~15 (Makri 2024).
+ Hatching also fails in very warm water (>19 C; ~0% at 24 C; Preziosi 2012 thesis). */
+function hs(T){return T<=19?1:T<=21?1-.85*(T-19)/2:T<=24?.15*(24-T)/3:0}
+function mods(p){const w=cl((p.T-3)/12,0,1),x=cl((7.2-p.pH)/.6,0,1)*(.4+.6*w),y=Math.pow(cl((25-p.sal)/15,0,1),2);
+ return{x,y,mm:(1+.1*x)*(1+y),dm:1,im:1-.3*y,ep:1-.6*y,h:(1-.6*x)*(1-.7*y)}}
+function size(p){const k=Math.pow(C.Qg/C.Qd,p.T/10),Wa=Math.pow((1-C.th)*(1-C.Df)/3*k*C.I0/p.u0,1/(1-C.th));return{Wa,We:C.rea*Math.pow(Wa,C.thea)}}
+function run(p,M,We,tegg){
+ V.fill(0);AG.fill(0);EG.fill(0);N.fill(0);EN.fill(0);ST.fill(0);const Td=.4*p.T,tw=2*Math.PI/365;
+ for(let i=0;i<NB;i++){const t0=5*i,o=i*L;let D=0,S=We,R=0,lnN=0,ed=0;N[o]=1;
+  for(let k=0;k<MA/DT;k++){
+   const t=t0+k*DT,doy=t%365,T0=p.T+2.5*Math.sin(tw*(doy-112));
+   let d=Math.abs(doy-p.peak);d=Math.min(d,365-d);
+   const P=p.food*Math.exp(-(d/p.width)*(d/p.width)),sg=P/(C.Ks+P),Sx=Math.pow(S,C.th-1);
+   let a=1;
+   if(D>C.Dd){const Cd=Math.max(0,1+Math.min(C.rmax,R/S));if(sg<C.rm*(1-C.rb)/C.ra+Cd/C.ra*p.m0/C.I0)a=0}
+   const T=a?T0:Td,qg=Math.pow(C.Qg,T/10),qd=Math.pow(C.Qd,T/10);
+   D=Math.min(1,D+a*qd*sg*p.u0*M.dm*DT);
+   const fs=D<C.Ds?1:(D<1?(1-D)/(1-C.Ds):0);
+   let G=0;
+   if(D>=C.Df){G=C.ra*a*sg*qg*C.I0*Sx*M.im-(C.rb+(1-C.rb)*a)*C.rm*qg*C.I0*Sx}
+   let E=0;
+   if(D>=1&&t>=tegg){const Ei=Math.max(G,0)*S,Em=C.ra*qg*C.I0*S*Sx;E=Ei+Math.max(0,Math.min(Em-Ei,R/DT))}
+   R+=((G>0?(1-fs)*G*S:G*S)-E)*DT;if(G>0)S+=fs*G*S*DT;
+   const ec=E*DT*Math.exp(lnN)/We*M.h*M.ep*hs(T0);
+   if(ec>0){ed+=ec;V[i*NB+(((doy/5)|0)%NB)]+=ec;AG[i]+=ec*(k+1)*DT;EG[i]+=ec}
+   lnN-=a*qg*Sx*p.m0*M.mm*DT;
+   if(R<-C.rs*S)break;
+   if(k%2===1){const j=o+(k+1)/2;N[j]=Math.exp(lnN);EN[j]=ed;ed=0;ST[j]=D<C.Ds?0:(D<1?1:2)}
+  }}}
+function eig(){let n=new Float64Array(NB).fill(1/NB),m=new Float64Array(NB),prev=1,lam=0;
+ for(let it=0;it<90;it++){m.fill(0);for(let i=0;i<NB;i++){const ni=n[i];if(ni)for(let j=0;j<NB;j++)m[j]+=ni*V[i*NB+j]}
+  let s=0;for(let j=0;j<NB;j++)s+=m[j];if(s<=0)return{lam:0,n:null,Tg:0,r:-9};
+  lam=Math.sqrt(s*prev);prev=s;for(let j=0;j<NB;j++)n[j]=m[j]/s}
+ let nu=0,de=0;for(let i=0;i<NB;i++){let rs=0;for(let j=0;j<NB;j++)rs+=V[i*NB+j];if(rs>0){nu+=n[i]*rs*AG[i]/EG[i];de+=n[i]*rs}}
+ const Tg=nu/de/365;return{lam,n,Tg,r:Math.log(lam)/Tg}}
+function solve(p){
+ const M=mods(p),W=size(p);let tegg=p.tegg;
+ if(p.auto){let best=-1e9;for(const tg of[0,40,80,120,160,200,240,300,360,450,540,630,730,850,950,1050]){run(p,M,W.We,tg);const e=eig();if(e.r>best){best=e.r;tegg=tg}}}
+ run(p,M,W.We,tegg);const e=eig(),Y=p.Y,TD=Y*365,inc=new Float64Array(TD+MA+2),ab=[0,1,2].map(()=>new Float64Array(TD));
+ for(let t=0;t<TD;t++){
+  let B=inc[t];if(t<365){const nb=e.n?e.n[Math.min(NB-1,(t/5)|0)]:1/NB;B+=1000*nb/5}
+  if(p.dd)B/=1+(ab[0][t]+ab[1][t]+ab[2][t])/C.K;
+  const o=Math.min(NB-1,((t%365)/5)|0)*L;
+  for(let a=0;a<=MA&&t+a<TD;a++){const n=N[o+a];if(n===0)break;ab[ST[o+a]][t+a]+=B*n;if(a>0)inc[t+a]+=B*EN[o+a]}
+  for(let a=TD-t;a<=MA;a++){const n=N[o+a];if(n===0)break;if(a>0)inc[t+a]+=B*EN[o+a]}}
+ return{M,W,tegg,e,ab,Y}}
+/*END*/
+const $=id=>document.getElementById(id),SL=[["T","Average water temperature","°C",-2,20,.5,1,"Warmer water speeds up growth, but also burns more energy."],["food","Food at the bloom’s peak (algae)","mg chlorophyll per m³",.5,20,.5,10,"More algae means faster growth and more eggs."],["peak","Day the algae bloom peaks","day of year",60,250,5,150,"Day 150 is about the end of May."],["width","How long the bloom lasts","days",10,100,5,50,"Short blooms mean a short feast, then a long famine."],["pH","Seawater pH","",6.6,8.2,.05,8.1,"Today’s open ocean is about 8.1. Lower means more acidic."],["sal","Salinity (saltiness)","",5,40,.5,34,"Open ocean is about 35. River water or melting ice lowers it."],["m0","Danger from predators","per day",.02,.14,.005,.08,"Higher means more copepods get eaten each day."],["Y","Years shown","years",3,15,1,10,""]];
+$("sl").innerHTML=SL.map(s=>`<div class="ctl"><label for="${s[0]}">${s[1]}<output id="o_${s[0]}"></output></label><input type="range" id="${s[0]}" min="${s[3]}" max="${s[4]}" step="${s[5]}" value="${s[6]}">${s[7]?`<small>${s[7]}</small>`:""}</div>`).join("");
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function setup(cv){const r=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*r;cv.height=h*r;const g=cv.getContext("2d");g.setTransform(r,0,0,r,0,0);g.font="12px system-ui,sans-serif";return{g,w,h}}
+function fmt(v){return v>=1e4?v.toExponential(0).replace("e+","×10^"):v>=100?Math.round(v):v>=1?v.toFixed(1):v.toPrecision(1)}
+function drawMain(R){
+ const{g,w,h}=setup($("c1")),m={l:58,r:12,t:10,b:32},pw=w-m.l-m.r,ph=h-m.t-m.b,days=R.Y*365,lg=$("log").checked,cols=[css("--s0"),css("--s1"),css("--s2")],mut=css("--mut"),line=css("--line");
+ const [a0,a1,a2]=R.ab,tot=i=>a0[i]+a1[i]+a2[i];let mx=1e-6;for(let i=0;i<days;i++)mx=Math.max(mx,tot(i));
+ const X=d=>m.l+d/days*pw;let Yf,tk=[];
+ if(lg){const hi=Math.ceil(Math.log10(mx)),lo=hi-6;Yf=v=>m.t+ph*(1-(Math.log10(Math.max(v,1e-9))-lo)/(hi-lo));for(let k=lo;k<=hi;k++)tk.push(Math.pow(10,k))}
+ else{const st=Math.pow(10,Math.floor(Math.log10(mx/4))),u=[1,2,5,10].find(f=>mx/(st*f)<=5)*st,top=Math.ceil(mx/u)*u;Yf=v=>m.t+ph*(1-v/top);for(let v=0;v<=top+1e-9;v+=u)tk.push(v)}
+ g.strokeStyle=line;g.fillStyle=mut;g.textAlign="right";
+ for(const v of tk){const y=Yf(v);g.beginPath();g.moveTo(m.l,y);g.lineTo(w-m.r,y);g.stroke();g.fillText(fmt(v),m.l-6,y+4)}
+ g.textAlign="center";const xs=R.Y>10?2:1;for(let y=0;y<=R.Y;y+=xs){g.fillText(y,X(y*365),h-14)}g.fillText("Years since start",m.l+pw/2,h-1);
+ g.save();g.translate(12,m.t+ph/2);g.rotate(-Math.PI/2);g.fillText("Animals per m² (relative)",0,0);g.restore();
+ if(!lg){const cum=[i=>a0[i],i=>a0[i]+a1[i],tot];for(let k=2;k>=0;k--){g.fillStyle=cols[k];g.beginPath();g.moveTo(X(0),Yf(0));for(let i=0;i<days;i+=2)g.lineTo(X(i),Yf(cum[k](i)));g.lineTo(X(days),Yf(0));g.fill()}}
+ else{[[a0,0],[a1,1],[a2,2]].forEach(([A,k])=>{g.strokeStyle=cols[k];g.lineWidth=1.6;g.beginPath();for(let i=0;i<days;i+=2){const y=Yf(Math.max(A[i],1e-9));i?g.lineTo(X(i),y):g.moveTo(X(i),y)}g.stroke()});
+  g.strokeStyle=css("--ink");g.setLineDash([4,3]);g.beginPath();for(let i=0;i<days;i+=2){const y=Yf(tot(i)+1e-9);i?g.lineTo(X(i),y):g.moveTo(X(i),y)}g.stroke();g.setLineDash([])}}
+function drawEnv(p){
+ const{g,w,h}=setup($("c2")),m={l:44,r:44,t:8,b:26},pw=w-m.l-m.r,ph=h-m.t-m.b,X=d=>m.l+d/365*pw;
+ g.fillStyle=css("--s0");g.beginPath();g.moveTo(X(0),m.t+ph);
+ for(let d=0;d<=365;d+=3){let q=Math.abs(d-p.peak);q=Math.min(q,365-q);g.lineTo(X(d),m.t+ph*(1-Math.exp(-((q/p.width)**2))))}g.lineTo(X(365),m.t+ph);g.fill();
+ const lo=p.T-3,hi=p.T+3;g.strokeStyle=css("--warn");g.lineWidth=2;g.beginPath();
+ for(let d=0;d<=365;d+=3){const T=p.T+2.5*Math.sin(2*Math.PI*(d-112)/365),y=m.t+ph*(1-(T-lo)/(hi-lo));d?g.lineTo(X(d),y):g.moveTo(X(d),y)}g.stroke();
+ g.fillStyle=css("--mut");g.textAlign="center";["Jan","Apr","Jul","Oct","Dec"].forEach((s,i)=>g.fillText(s,X([0,91,182,273,358][i]),h-8));
+ g.textAlign="left";g.fillText(p.food+" mg chl m⁻³ peak",4,m.t+10);g.textAlign="right";g.fillText(hi.toFixed(1)+" °C",w-4,m.t+10);g.fillText(lo.toFixed(1)+" °C",w-4,m.t+ph)}
+let tm;
+function update(){clearTimeout(tm);tm=setTimeout(go,50)}
+function go(){
+ const p={u0:+$("sp").value,auto:$("auto").checked,tegg:+$("tegg").value,dd:$("dd").checked};
+ SL.forEach(s=>{p[s[0]]=+$(s[0]).value;$("o_"+s[0]).textContent=" "+p[s[0]]+(s[2]?" "+s[2]:"")});
+ $("tg").hidden=p.auto;$("o_tegg").textContent=" year "+(Math.floor(p.tegg/365)+1)+", day "+(p.tegg%365);
+ const R=solve(p),e=R.e,viable=e.r>0&&isFinite(e.r);
+ const st=$("st");
+ if(!e.n)st.innerHTML='<span class="bad">The population dies out: no young copepods manage to grow up and lay eggs under these conditions.</span>';
+ else if(viable)st.innerHTML='<span class="ok">The population can sustain itself: on average, parents leave behind more than enough surviving offspring to replace themselves.</span>';
+ else st.innerHTML='<span class="bad">The population shrinks: copepods grow up, but too few offspring survive to replace their parents.</span>';
+ const ann=e.n&&isFinite(e.r)?((Math.exp(e.r)-1)*100):null;
+ $("met").innerHTML=[["Population growth",ann===null?"–":(ann>0?"+":"")+ann.toFixed(0)+"% per year","per year, before the crowding limit"],["Generation time",e.n?e.Tg.toFixed(1)+" yr":"–","average age of mothers when they lay eggs"],["Adult size",R.W.Wa.toFixed(0)+" µg C","predicted from growth rate and temperature (µg of carbon)"],["Egg laying starts",e.n||!p.auto?"year "+(Math.floor(R.tegg/365)+1)+", day "+(R.tegg%365):"–",p.auto?"best timing found":"your setting"],["Low-pH harm",(R.M.x*100).toFixed(0)+"%","of the worst case in the model"],["Low-salinity harm",(R.M.y*100).toFixed(0)+"%","of the worst case in the model"]].map(a=>`<div>${a[0]}<b>${a[1]}</b>${a[2]}</div>`).join("");
+ drawMain(R);drawEnv(p)}
+document.querySelectorAll("input,select").forEach(el=>el.addEventListener("input",update));
+addEventListener("resize",update);matchMedia("(prefers-color-scheme: dark)").addEventListener("change",update);go();
+</script></body></html>
